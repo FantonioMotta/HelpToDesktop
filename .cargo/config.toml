@@ -1,0 +1,9 @@
+# Global compiler/build settings for the HelpBar workspace.
+#
+# whisper.cpp (compiled by whisper-rs-sys through the `cmake` crate) drops the
+# default MSVC release flags, which makes the release binary run ~10x slower
+# (~0.2x realtime instead of ~2x realtime). Forcing the optimization flags back
+# keeps transcription fast without touching bundled upstream sources.
+[env]
+CMAKE_C_FLAGS_RELEASE = "/O2 /Ob2 /DNDEBUG"
+CMAKE_CXX_FLAGS_RELEASE = "/O2 /Ob2 /DNDEBUG"

@@ -1,0 +1,36 @@
+[package]
+name = "helpbar-desktop"
+version = "0.1.0"
+description = "HelpBar Desktop - floating productivity bar for Windows 11"
+authors = ["HelpBar"]
+edition = "2021"
+
+[lib]
+name = "helpbar_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# ATLAS voice engine (100% local): whisper.cpp bindings + audio capture.
+whisper-rs = "0.16"
+cpal = "0.18"
+sha2 = "0.10"
+ureq = "2"
+
+# Release builds of whisper.cpp are noticeably faster with these flags. They are
+# set here (instead of relying on the shell) so every machine builds it the same
+# way; see docs/ARCHITECTURE.md for the CMake/libclang prerequisites.
+[profile.release]
+opt-level = 3
