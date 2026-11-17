@@ -1,6 +1,6 @@
 [package]
 name = "helpbar-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "HelpBar Desktop - floating productivity bar for Windows 11"
 authors = ["HelpBar"]
 edition = "2021"
