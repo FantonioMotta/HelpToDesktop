@@ -1,0 +1,20 @@
+name: Debug token
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check release visibility
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "--- by tag ---"
+          gh api repos/FantonioMotta/HelpToDesktop/releases/tags/v0.1.0 --include || true
+          echo "--- list ---"
+          gh api repos/FantonioMotta/HelpToDesktop/releases --jq '.[] | {id, tag_name, draft, prerelease}' || true
