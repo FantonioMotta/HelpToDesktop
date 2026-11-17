@@ -13,6 +13,10 @@ on:
 
 permissions:
   contents: write
+  # The tagged commit modifies .github/workflows/release.yml. GitHub's
+  # "Create a release" endpoint returns 404 unless the token can write
+  # workflows too, so the tauri-action release step needs this scope.
+  workflows: write
 
 jobs:
   release-windows:
