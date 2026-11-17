@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { Database, Download, Ear, Keyboard, Loader2, LogOut, Monitor, Move, Palette, Power, Settings as SettingsIcon, Sparkles, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Database, Download, Ear, Keyboard, Loader2, LogOut, Monitor, Move, Palette, Power, RefreshCw, Settings as SettingsIcon, Sparkles, Volume2 } from "lucide-react";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { usePreferences } from "../../store/PreferencesContext";
 import { useAppData } from "../../store/AppDataContext";
 import { databaseLocationLabel } from "../../services/db";
 import { quitApp } from "../../services/appControl";
+import { checkForUpdate, formatBytes, restartApp, type UpdateInfo, type UpdateProgress } from "../../services/updater";
 import { useAtlas } from "../atlas/AtlasContext";
 import { ShortcutRecorder } from "./ShortcutRecorder";
 
@@ -37,7 +38,10 @@ function ToggleButton({ active, onClick, disabled }: { active: boolean; onClick:
   );
 }
 
+type UpdateHandleLike = Awaited<ReturnType<typeof checkForUpdate>>;
+
 export function SettingsView() {
+  const activeUpdate = useRef<UpdateHandleLike>(null);
   const { prefs, setPrefs, shortcutError } = usePreferences();
   const { storage } = useAppData();
   const {
@@ -51,8 +55,48 @@ export function SettingsView() {
   const [autoStartBusy, setAutoStartBusy] = useState(false);
   const [autoStartError, setAutoStartError] = useState<string | null>(null);
   const [confirmQuit, setConfirmQuit] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "upToDate" | "downloading" | "error">("idle");
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const clearCustomPosition = () => setPrefs({ customPosition: null });
+
+  const handleCheckUpdate = async () => {
+    setUpdateStatus("checking");
+    setUpdateError(null);
+    setUpdateInfo(null);
+    setUpdateProgress(null);
+    try {
+      const update = await checkForUpdate();
+      if (update) {
+        setUpdateInfo(update.info);
+        setUpdateStatus("available");
+        // Guarda o handle para o botão instalar usar
+        activeUpdate.current = update;
+      } else {
+        setUpdateStatus("upToDate");
+      }
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err));
+      setUpdateStatus("error");
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    const update = activeUpdate.current;
+    if (!update) return;
+    setUpdateStatus("downloading");
+    setUpdateProgress({ downloaded: 0, total: null, percent: 0 });
+    try {
+      await update.install((progress) => setUpdateProgress(progress));
+      // No Windows o instalador reinicia o app sozinho; no fallback, tentamos relaunch.
+      await restartApp();
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err));
+      setUpdateStatus("error");
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -252,6 +296,62 @@ export function SettingsView() {
         </p>
         {storage.error && (
           <div className="text-[11px] text-amber-400 mt-1 break-words">{storage.error}</div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-zinc-800/70 p-4">
+        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2 flex items-center gap-2"><RefreshCw size={13} /> Atualizações</div>
+        <Row
+          title="Verificar atualizações"
+          description="Busca novas versões no GitHub Releases. A atualização é baixada e instalada com verificação de assinatura."
+        >
+          <button
+            type="button"
+            onClick={() => void handleCheckUpdate()}
+            disabled={updateStatus === "checking" || updateStatus === "downloading"}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border bg-white/5 border-white/10 text-zinc-200 hover:bg-white/10 disabled:opacity-50"
+          >
+            {updateStatus === "checking" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {updateStatus === "checking" ? "Verificando…" : "Verificar agora"}
+          </button>
+        </Row>
+        {updateStatus === "upToDate" && (
+          <div className="text-[11px] text-emerald-300 pt-1">Você está na versão mais recente.</div>
+        )}
+        {updateStatus === "available" && updateInfo && (
+          <div className="mt-2 rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs text-sky-100">
+                Nova versão <strong>{updateInfo.version}</strong> disponível (atual: {updateInfo.currentVersion}).
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleInstallUpdate()}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-sky-600/80 border border-sky-500/50 text-white hover:bg-sky-600"
+              >
+                <Download size={13} /> Atualizar
+              </button>
+            </div>
+            {updateInfo.notes && (
+              <div className="text-[11px] text-zinc-300 whitespace-pre-wrap max-h-24 overflow-y-auto">
+                {updateInfo.notes}
+              </div>
+            )}
+          </div>
+        )}
+        {updateStatus === "downloading" && (
+          <div className="mt-2 space-y-1">
+            <div className="text-[11px] text-zinc-300">
+              Baixando atualização… {updateProgress?.percent != null ? `${Math.round(updateProgress.percent)}%` : ""}
+              {updateProgress?.downloaded ? ` (${formatBytes(updateProgress.downloaded)})` : ""}
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full bg-sky-500 transition-[width] duration-300" style={{ width: `${updateProgress?.percent ?? 0}%` }} />
+            </div>
+          </div>
+        )}
+        {updateStatus === "error" && updateError && (
+          <div className="text-[11px] text-red-400 pt-1">Falha ao atualizar: {updateError}</div>
         )}
       </div>
 

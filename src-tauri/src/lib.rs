@@ -52,6 +52,15 @@ fn migrations() -> Vec<Migration> {
             CREATE INDEX IF NOT EXISTS idx_events_date ON events (date, start_time);
         ",
         kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 2,
+        description: "add_color_to_notes_and_events",
+        sql: "
+            ALTER TABLE notes ADD COLUMN color TEXT NOT NULL DEFAULT 'none';
+            ALTER TABLE events ADD COLUMN color TEXT NOT NULL DEFAULT 'none';
+        ",
+        kind: MigrationKind::Up,
     }]
 }
 
@@ -74,15 +83,52 @@ fn position_window_top_center(window: &WebviewWindow, margin_logical: f64) -> ta
     Ok(())
 }
 
-fn apply_shell_mode(window: &WebviewWindow, mode: &str) -> tauri::Result<()> {
+fn apply_shell_mode(
+    window: &WebviewWindow,
+    mode: &str,
+    custom_position: Option<(i32, i32)>,
+) -> tauri::Result<()> {
     let (w, h, margin) = match mode {
         "expanded" | "focus" => (EXPANDED_W, EXPANDED_H, TOP_MARGIN),
         _ => (COMPACT_W, COMPACT_H, TOP_MARGIN_COMPACT),
     };
     window.set_size(Size::Logical(LogicalSize::new(w, h)))?;
-    // Reposition after resize so it stays centered on the primary monitor.
-    position_window_top_center(window, margin)?;
+    // Reposition after resize. If the user chose a custom position, honour it
+    // (clamped to the current monitor so the window can never land offscreen);
+    // otherwise fall back to the anchor on the monitor the window is on.
+    if let Some((x, y)) = custom_position {
+        position_window_at(window, x, y)?;
+    } else {
+        position_window_top_center(window, margin)?;
+    }
     Ok(())
+}
+
+/// Keeps the window inside the monitor that contains the given point, then
+/// moves it there. Used to preserve a user-chosen position across mode changes
+/// without letting it jump to the primary monitor or go offscreen.
+fn position_window_at(window: &WebviewWindow, x: i32, y: i32) -> tauri::Result<()> {
+    let monitor = window
+        .current_monitor()?
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let size = window.outer_size()?;
+    let (target_x, target_y) = match monitor {
+        Some(m) => {
+            // monitor.size()/position() are already physical pixels, so no
+            // scale-factor conversion is needed here.
+            let bounds = m.size();
+            let min_x = m.position().x;
+            let min_y = m.position().y;
+            let max_x = min_x + bounds.width as i32 - size.width as i32;
+            let max_y = min_y + bounds.height as i32 - size.height as i32;
+            (
+                x.clamp(min_x, max_x.max(min_x)),
+                y.clamp(min_y, max_y.max(min_y)),
+            )
+        }
+        None => (x, y),
+    };
+    window.set_position(PhysicalPosition::new(target_x, target_y))
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -109,11 +155,15 @@ fn toggle_main_window(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn set_shell_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
+fn set_shell_mode(
+    app: tauri::AppHandle,
+    mode: String,
+    custom_position: Option<(i32, i32)>,
+) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
-    apply_shell_mode(&window, &mode).map_err(|e| e.to_string())?;
+    apply_shell_mode(&window, &mode, custom_position).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -144,6 +194,8 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             set_shell_mode,
             quit_app,
@@ -203,13 +255,10 @@ pub fn run() {
             let _tray = tray_builder.build(app)?;
 
             if let Some(window) = app.get_webview_window("main") {
-                let _ = apply_shell_mode(&window, "compact");
-                // Reposition once more shortly after show to account for DPI/layout settling.
-                let window2 = window.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(150));
-                    let _ = position_window_top_center(&window2, TOP_MARGIN_COMPACT);
-                });
+                let _ = apply_shell_mode(&window, "compact", None);
+                // Final placement is handled by the frontend (useWindowPositioning),
+                // which restores a saved custom position or centers on the current
+                // monitor. Re-centering here would fight that restore on startup.
             }
             Ok(())
         })

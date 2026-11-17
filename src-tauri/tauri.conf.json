@@ -33,6 +33,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "publisher": "HelpBar",
     "copyright": "© 2026 HelpBar. Todos os direitos reservados.",
@@ -57,6 +58,17 @@
         "startMenuFolder": "HelpBar",
         "languages": ["PortugueseBR", "English"],
         "displayLanguageSelector": true
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/FantonioMotta/HelpToDesktop/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE3QjU0RDJGRUI3MkEwM0IKUldRN29ITHJMMDIxcDFiQUxuTENSSkJTZjErOGozM0tmNlBpZ2piTUpVWUdGRldZUWRESndaOVEK",
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

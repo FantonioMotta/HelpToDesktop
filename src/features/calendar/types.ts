@@ -7,4 +7,5 @@ export type CalendarEvent = {
   startTime: string; // HH:MM or empty
   endTime: string; // HH:MM or empty
   notes?: string;
+  color?: string; // key from utils/colors (e.g. "blue", "purple")
 };

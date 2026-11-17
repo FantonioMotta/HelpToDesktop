@@ -11,6 +11,7 @@ export type Note = {
   content: string;
   createdAt: number;
   updatedAt: number;
+  color?: string; // key from utils/colors
 };
 
 export type Reminder = {

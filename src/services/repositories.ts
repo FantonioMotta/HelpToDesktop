@@ -15,6 +15,7 @@ type NoteRow = {
   content: string;
   created_at: number | string;
   updated_at: number | string;
+  color?: string | null;
 };
 
 type ReminderRow = {
@@ -32,6 +33,7 @@ type EventRow = {
   start_time: string | null;
   end_time: string | null;
   notes: string | null;
+  color?: string | null;
   created_at: number | string;
 };
 
@@ -100,7 +102,7 @@ export const notesRepository = {
     const db = await openDatabase();
     if (!db) return [];
     const rows = await db.select<NoteRow[]>(
-      "SELECT id, title, content, created_at, updated_at FROM notes ORDER BY updated_at DESC",
+      "SELECT id, title, content, color, created_at, updated_at FROM notes ORDER BY updated_at DESC",
     );
     return rows.map((row) => ({
       id: row.id,
@@ -108,6 +110,7 @@ export const notesRepository = {
       content: row.content,
       createdAt: asNumber(row.created_at),
       updatedAt: asNumber(row.updated_at),
+      color: row.color ?? undefined,
     }));
   },
 
@@ -116,13 +119,14 @@ export const notesRepository = {
       const db = await openDatabase();
       if (!db) return;
       await db.execute(
-        `INSERT INTO notes (id, title, content, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO notes (id, title, content, color, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            content = excluded.content,
+           color = excluded.color,
            updated_at = excluded.updated_at`,
-        [note.id, note.title, note.content, note.createdAt, note.updatedAt],
+        [note.id, note.title, note.content, note.color ?? "none", note.createdAt, note.updatedAt],
       );
     });
   },
@@ -188,7 +192,7 @@ export const eventsRepository = {
     const db = await openDatabase();
     if (!db) return [];
     const rows = await db.select<EventRow[]>(
-      `SELECT id, title, date, start_time, end_time, notes, created_at
+      `SELECT id, title, date, start_time, end_time, notes, color, created_at
        FROM events
        ORDER BY date ASC, start_time ASC`,
     );
@@ -199,6 +203,7 @@ export const eventsRepository = {
       startTime: row.start_time ?? "",
       endTime: row.end_time ?? "",
       notes: row.notes ?? undefined,
+      color: row.color ?? undefined,
     }));
   },
 
@@ -207,14 +212,15 @@ export const eventsRepository = {
       const db = await openDatabase();
       if (!db) return;
       await db.execute(
-        `INSERT INTO events (id, title, date, start_time, end_time, notes, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO events (id, title, date, start_time, end_time, notes, color, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            date = excluded.date,
            start_time = excluded.start_time,
            end_time = excluded.end_time,
-           notes = excluded.notes`,
+           notes = excluded.notes,
+           color = excluded.color`,
         [
           event.id,
           event.title,
@@ -222,6 +228,7 @@ export const eventsRepository = {
           event.startTime,
           event.endTime,
           event.notes ?? null,
+          event.color ?? "none",
           Date.now(),
         ],
       );

@@ -2,19 +2,30 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ShellMode, ShellModule } from "../types/shell";
+import { usePreferences } from "../store/PreferencesContext";
 
 export function useShellMode() {
   const [mode, setModeState] = useState<ShellMode>("compact");
   const [activeModule, setActiveModule] = useState<ShellModule>("dashboard");
+  const { prefs } = usePreferences();
+
+  const invokeMode = useCallback(async (next: ShellMode) => {
+    // Pass the saved position so Rust doesn't snap the window back to the
+    // primary monitor when the size changes between compact/expanded.
+    const customPosition = prefs.allowMove && prefs.customPosition
+      ? [prefs.customPosition.x, prefs.customPosition.y]
+      : null;
+    await invoke("set_shell_mode", { mode: next, customPosition });
+  }, [prefs.allowMove, prefs.customPosition]);
 
   const applyMode = useCallback(async (next: ShellMode) => {
     setModeState(next);
     try {
-      await invoke("set_shell_mode", { mode: next });
+      await invokeMode(next);
     } catch {
       // Running outside Tauri (e.g. plain browser preview) — ignore.
     }
-  }, []);
+  }, [invokeMode]);
 
   const expand = useCallback(async () => {
     await applyMode("expanded");
@@ -42,7 +53,10 @@ export function useShellMode() {
           if (!focused) {
             setModeState((current) => {
               if (current === "expanded") {
-                void invoke("set_shell_mode", { mode: "compact" }).catch(() => {});
+                const customPosition = prefs.allowMove && prefs.customPosition
+                  ? [prefs.customPosition.x, prefs.customPosition.y]
+                  : null;
+                void invoke("set_shell_mode", { mode: "compact", customPosition }).catch(() => {});
                 return "compact";
               }
               return current;
@@ -56,7 +70,7 @@ export function useShellMode() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [prefs.allowMove, prefs.customPosition]);
 
   return {
     mode,

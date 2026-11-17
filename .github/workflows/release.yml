@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag do release (ex: v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # whisper.cpp (via whisper-rs-sys) needs libclang to generate bindings.
+      # The PyPI `clang` wheel ships libclang.dll in its `native` folder.
+      - name: Install libclang
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install clang
+          $clangNative = python -c "import clang, os; print(os.path.join(os.path.dirname(clang.__file__), 'native'))"
+          "LIBCLANG_PATH=$clangNative" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # The cmake crate accepts CMAKE with the full executable path, avoiding
+      # PATH ordering issues on the runner.
+      - name: Pin CMake executable
+        shell: pwsh
+        run: |
+          $cmake = (Get-Command cmake).Source
+          "CMAKE=$cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          repo: FantonioMotta/HelpToDesktop
+          tagName: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          releaseName: "HelpBar Desktop ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          releaseBody: "Atualização automática disponível via GitHub Releases."
+          releaseDraft: false
+          prerelease: false
+          updaterJsonPreferNsis: true
+          includeUpdaterJson: true

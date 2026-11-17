@@ -39,8 +39,8 @@ type AppDataContextValue = {
   toggleTask: (id: string) => void;
   deleteTask: (id: string) => void;
   deleteCompletedTasks: () => void;
-  addNote: (input: { title?: string; content: string }) => string | null;
-  updateNote: (id: string, patch: Partial<Pick<Note, "title" | "content">>) => void;
+  addNote: (input: { title?: string; content: string; color?: string }) => string | null;
+  updateNote: (id: string, patch: Partial<Pick<Note, "title" | "content" | "color">>) => void;
   deleteNote: (id: string) => void;
   addReminder: (input: { text: string; dueAt: number }) => string | null;
   updateReminder: (id: string, patch: Partial<Pick<Reminder, "text" | "dueAt" | "notified">>) => void;
@@ -192,7 +192,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [commitTasks, persist]);
 
   const addNote = useCallback(
-    ({ title, content }: { title?: string; content: string }) => {
+    ({ title, content, color }: { title?: string; content: string; color?: string }) => {
       const body = content.trim();
       if (!body) return null;
       const now = Date.now();
@@ -201,6 +201,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         id: crypto.randomUUID(),
         title: heading || (body.length > 40 ? `${body.slice(0, 40)}…` : body),
         content: body,
+        color: color ?? "none",
         createdAt: now,
         updatedAt: now,
       };
@@ -212,7 +213,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   );
 
   const updateNote = useCallback(
-    (id: string, patch: Partial<Pick<Note, "title" | "content">>) => {
+    (id: string, patch: Partial<Pick<Note, "title" | "content" | "color">>) => {
       const current = notesRef.current.find((note) => note.id === id);
       if (!current) return;
       const next: Note = {

@@ -4,6 +4,8 @@ import type { CalendarEvent, CalendarViewMode } from "./types";
 import { addDays, brToISO, formatDateBRFromISO, parseISODate, sameDay, startOfWeek, toISODate } from "./dateUtils";
 import { formatDateInput, formatTimeInput, isValidDateBR, normalizeTime } from "../../utils/datetime";
 import { useAppData } from "../../store/AppDataContext";
+import { ColorPicker } from "../../components/ColorPicker";
+import { COLOR_OPTIONS, chipStyle, colorHex, dotStyle, type ColorKey } from "../../utils/colors";
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -26,6 +28,7 @@ function EventForm({
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [notes, setNotes] = useState("");
+  const [color, setColor] = useState<string>("none");
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
@@ -57,11 +60,12 @@ function EventForm({
       setError("O horário de fim deve ser igual ou após o início.");
       return;
     }
-    onAdd({ title: t, date: iso, startTime: ns || "", endTime: ne || "", notes: notes.trim() || undefined });
+    onAdd({ title: t, date: iso, startTime: ns || "", endTime: ne || "", notes: notes.trim() || undefined, color });
     setTitle("");
     setStartTime("");
     setEndTime("");
     setNotes("");
+    setColor("none");
     setError(null);
   };
 
@@ -119,6 +123,7 @@ function EventForm({
         placeholder="Notas (opcional)"
         className="w-full bg-zinc-900/70 border border-white/10 rounded-md px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-sky-500/50"
       />
+      <ColorPicker value={color} onChange={(key: ColorKey) => setColor(key)} />
       {error && <div className="text-[11px] text-red-400">{error}</div>}
       <button type="button" onClick={submit} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-sky-600/80 hover:bg-sky-600 text-white text-xs">
         <Plus size={14} /> Adicionar
@@ -127,13 +132,38 @@ function EventForm({
   );
 }
 
-function EventList({ events, onRemove }: { events: CalendarEvent[]; onRemove: (id: string) => void }) {
+function nextColor(current: string | undefined): ColorKey {
+  const idx = COLOR_OPTIONS.findIndex((c) => c.key === (current ?? "none"));
+  return COLOR_OPTIONS[(idx + 1) % COLOR_OPTIONS.length].key;
+}
+
+function EventList({
+  events,
+  onRemove,
+  onChangeColor,
+}: {
+  events: CalendarEvent[];
+  onRemove: (id: string) => void;
+  onChangeColor: (id: string, color: ColorKey) => void;
+}) {
   if (events.length === 0) return <div className="text-xs text-zinc-500">Nenhum compromisso.</div>;
   const sorted = [...events].sort((a, b) => (a.date + (a.startTime || "99:99")).localeCompare(b.date + (b.startTime || "99:99")));
   return (
     <div className="space-y-1">
       {sorted.map((e) => (
-        <div key={e.id} className="group flex items-start gap-2 text-xs bg-zinc-900/50 rounded-md px-2 py-1.5 border border-white/5">
+        <div
+          key={e.id}
+          className="group flex items-start gap-2 text-xs bg-zinc-900/50 rounded-md px-2 py-1.5 border"
+          style={{ borderColor: colorHex(e.color) ? `${colorHex(e.color)}66` : "rgba(255,255,255,0.05)" }}
+        >
+          <button
+            type="button"
+            onClick={() => onChangeColor(e.id, nextColor(e.color))}
+            className="mt-0.5 shrink-0 rounded-full transition-transform hover:scale-125"
+            title="Alterar cor"
+          >
+            <span className="block w-2.5 h-2.5 rounded-full" style={dotStyle(e.color)} />
+          </button>
           <div className="flex-1 min-w-0">
             <div className="text-zinc-100 font-medium truncate">{e.title}</div>
             <div className="text-zinc-400">
@@ -152,7 +182,7 @@ function EventList({ events, onRemove }: { events: CalendarEvent[]; onRemove: (i
 }
 
 export function CalendarView() {
-  const { events, addEvent, deleteEvent } = useAppData();
+  const { events, addEvent, updateEvent, deleteEvent } = useAppData();
   const [mode, setMode] = useState<CalendarViewMode>("month");
   const [cursor, setCursor] = useState<Date>(new Date());
   const today = new Date();
@@ -161,6 +191,7 @@ export function CalendarView() {
 
   const addEventHandler = (e: Omit<CalendarEvent, "id">) => addEvent(e);
   const removeEvent = (id: string) => deleteEvent(id);
+  const changeEventColor = (id: string, color: ColorKey) => updateEvent(id, { color });
 
   const headerLabel = useMemo(() => {
     if (mode === "month") return cursor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -258,7 +289,13 @@ export function CalendarView() {
                       <div className={`text-xs ${isToday ? "text-sky-300 font-semibold" : "text-zinc-300"}`}>{c.date.getDate()}</div>
                       <div className="mt-1 space-y-0.5 overflow-hidden">
                         {dayEvents.slice(0, 3).map((e) => (
-                          <div key={e.id} className="text-[11px] truncate text-zinc-200 bg-white/10 rounded px-1 py-0.5">{formatEventTime(e) ? `${formatEventTime(e)} ` : ""}{e.title}</div>
+                          <div
+                            key={e.id}
+                            className="text-[11px] truncate rounded px-1 py-0.5 border"
+                            style={chipStyle(e.color)}
+                          >
+                            {formatEventTime(e) ? `${formatEventTime(e)} ` : ""}{e.title}
+                          </div>
                         ))}
                         {dayEvents.length > 3 && <div className="text-[10px] text-zinc-400">+{dayEvents.length - 3}</div>}
                       </div>
@@ -292,7 +329,13 @@ export function CalendarView() {
                     <div className={`text-sm mb-1 ${isToday ? "text-sky-300 font-semibold" : "text-zinc-200"}`}>{d.getDate()}</div>
                     <div className="space-y-1">
                       {dayEvents.length === 0 ? <div className="text-[10px] text-zinc-500">—</div> : dayEvents.map((e) => (
-                        <div key={e.id} className="text-[10px] text-zinc-100 bg-white/10 rounded px-1 py-0.5 truncate">{formatEventTime(e) ? `${formatEventTime(e)} ` : ""}{e.title}</div>
+                        <div
+                          key={e.id}
+                          className="text-[10px] rounded px-1 py-0.5 truncate border"
+                          style={chipStyle(e.color)}
+                        >
+                          {formatEventTime(e) ? `${formatEventTime(e)} ` : ""}{e.title}
+                        </div>
                       ))}
                     </div>
                   </button>
@@ -304,7 +347,7 @@ export function CalendarView() {
           {mode === "day" && (
             <div>
               <div className="text-sm text-zinc-300 mb-2 capitalize">{cursor.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}</div>
-              <EventList events={eventsForDay(selectedDate)} onRemove={removeEvent} />
+              <EventList events={eventsForDay(selectedDate)} onRemove={removeEvent} onChangeColor={changeEventColor} />
             </div>
           )}
         </div>
@@ -315,7 +358,7 @@ export function CalendarView() {
             <div className="text-sm font-medium text-zinc-100 mb-2">
               {mode === "month" ? "Compromissos do mês" : mode === "week" ? "Compromissos da semana" : "Compromissos do dia"}
             </div>
-            <EventList events={visibleEvents} onRemove={removeEvent} />
+            <EventList events={visibleEvents} onRemove={removeEvent} onChangeColor={changeEventColor} />
           </div>
         </div>
       </div>

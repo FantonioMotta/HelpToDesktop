@@ -45,8 +45,10 @@ export function CompactBar({ onExpand }: { onExpand: () => void | Promise<void> 
   const atlasText = feedback?.text || transcript || ATLAS_LABEL[phase];
   const listening = phase === "listening";
 
-  const openAtlas = () => {
-    window.dispatchEvent(new CustomEvent("helpbar:open-module", { detail: "atlas" }));
+  const openModule = (module: "tasks" | "notes" | "reminders" | "atlas") => {
+    // Shell.tsx listens for this event, selects the tab and expands the panel
+    // when it's closed — so a single click goes straight to the clicked module.
+    window.dispatchEvent(new CustomEvent("helpbar:open-module", { detail: module }));
   };
 
   return (
@@ -84,7 +86,7 @@ export function CompactBar({ onExpand }: { onExpand: () => void | Promise<void> 
       {atlasActive ? (
         <button
           type="button"
-          onClick={openAtlas}
+          onClick={() => openModule("atlas")}
           className={`min-w-0 max-w-[210px] inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border truncate ${
             phase === "error"
               ? "bg-amber-500/15 border-amber-500/40 text-amber-100"
@@ -102,10 +104,31 @@ export function CompactBar({ onExpand }: { onExpand: () => void | Promise<void> 
           <span className="truncate">{atlasText}</span>
         </button>
       ) : (
-        <div className="flex items-center gap-3 text-zinc-300 shrink-0">
-          <span className="inline-flex items-center gap-1 text-xs" title="Tarefas ativas"><CheckSquare size={14} />{activeTasks}</span>
-          <span className="inline-flex items-center gap-1 text-xs" title="Notas"><StickyNote size={14} />{notes.length}</span>
-          <span className="inline-flex items-center gap-1 text-xs" title="Lembretes pendentes"><Bell size={14} />{pendingReminders}</span>
+        <div className="flex items-center gap-1 text-zinc-300 shrink-0">
+          <button
+            type="button"
+            onClick={() => openModule("tasks")}
+            className="inline-flex items-center gap-1 text-xs px-1.5 py-1 rounded-md hover:bg-white/10 hover:text-white transition-colors"
+            title="Abrir Tarefas"
+          >
+            <CheckSquare size={14} />{activeTasks}
+          </button>
+          <button
+            type="button"
+            onClick={() => openModule("notes")}
+            className="inline-flex items-center gap-1 text-xs px-1.5 py-1 rounded-md hover:bg-white/10 hover:text-white transition-colors"
+            title="Abrir Notas"
+          >
+            <StickyNote size={14} />{notes.length}
+          </button>
+          <button
+            type="button"
+            onClick={() => openModule("reminders")}
+            className="inline-flex items-center gap-1 text-xs px-1.5 py-1 rounded-md hover:bg-white/10 hover:text-white transition-colors"
+            title="Abrir Lembretes"
+          >
+            <Bell size={14} />{pendingReminders}
+          </button>
         </div>
       )}
 
