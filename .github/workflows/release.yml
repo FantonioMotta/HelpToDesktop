@@ -38,23 +38,38 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # whisper.cpp (via whisper-rs-sys) needs libclang to generate bindings.
-      # The PyPI `clang` wheel ships libclang.dll in its `native` folder.
-      - name: Install libclang
+      # whisper-rs-sys uses bindgen, which needs libclang.dll to parse wrapper.h.
+      # windows-latest ships LLVM (with libclang.dll in C:\Program Files\LLVM\bin),
+      # so prefer that. Fall back to the PyPI clang wheel if LLVM is missing.
+      - name: Configure libclang and CMake
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install clang
-          $clangNative = python -c "import clang, os; print(os.path.join(os.path.dirname(clang.__file__), 'native'))"
-          "LIBCLANG_PATH=$clangNative" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $libclang = "C:\Program Files\LLVM\bin\libclang.dll"
+          if (-not (Test-Path $libclang)) {
+            python -m pip install --upgrade pip
+            python -m pip install clang
+            $native = python -c "import clang, os; print(os.path.join(os.path.dirname(clang.__file__), 'native'))"
+            if (Test-Path (Join-Path $native "libclang.dll")) {
+              $libclang = Join-Path $native "libclang.dll"
+            }
+          }
+          if (-not (Test-Path $libclang)) {
+            throw "libclang.dll not found (checked LLVM and the clang Python wheel)"
+          }
+          "LIBCLANG_PATH=$(Split-Path $libclang)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "LIBCLANG_PATH=$(Split-Path $libclang)"
 
-      # The cmake crate accepts CMAKE with the full executable path, avoiding
-      # PATH ordering issues on the runner.
-      - name: Pin CMake executable
-        shell: pwsh
-        run: |
-          $cmake = (Get-Command cmake).Source
+          # The cmake crate accepts CMAKE with the full executable path.
+          $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue
+          if ($cmakeCmd) {
+            $cmake = $cmakeCmd.Source
+          } elseif (Test-Path "C:\Program Files\CMake\bin\cmake.exe") {
+            $cmake = "C:\Program Files\CMake\bin\cmake.exe"
+          } else {
+            throw "cmake executable not found"
+          }
           "CMAKE=$cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "CMAKE=$cmake"
 
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
