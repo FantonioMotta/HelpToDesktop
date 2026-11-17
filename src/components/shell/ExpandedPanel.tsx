@@ -7,6 +7,7 @@ import {
   Settings,
   StickyNote,
   Bell,
+  Sparkles,
   X,
 } from "lucide-react";
 import type { ShellMode, ShellModule } from "../../types/shell";
@@ -15,6 +16,7 @@ import { CalendarView } from "../../features/calendar/CalendarView";
 import { TasksView } from "../../features/tasks/TasksView";
 import { NotesView } from "../../features/notes/NotesView";
 import { RemindersView } from "../../features/reminders/RemindersView";
+import { AtlasView } from "../../features/atlas/AtlasView";
 import { SettingsView } from "../../features/settings/SettingsView";
 
 
@@ -24,6 +26,7 @@ const modules: { id: ShellModule; label: string; icon: typeof LayoutDashboard }[
   { id: "tasks", label: "Tarefas", icon: CheckSquare },
   { id: "notes", label: "Notas", icon: StickyNote },
   { id: "reminders", label: "Lembretes", icon: Bell },
+  { id: "atlas", label: "ATLAS", icon: Sparkles },
   { id: "settings", label: "Config.", icon: Settings },
 ];
 
@@ -43,6 +46,7 @@ function ModuleContent({ module }: { module: ShellModule }) {
   if (module === "tasks") return <TasksView />;
   if (module === "notes") return <NotesView />;
   if (module === "reminders") return <RemindersView />;
+  if (module === "atlas") return <AtlasView />;
   return <SettingsView />;
 }
 
@@ -105,7 +109,7 @@ export function ExpandedPanel({
       </div>
       <div className="px-4 py-2 border-t border-white/10 text-[11px] text-zinc-500 flex items-center justify-between">
         <span>{pinned ? "Modo foco: painel fixado" : "Modo expandido: recolhe ao perder foco"}</span>
-        <span>Dados locais • Etapa 8</span>
+        <span>Dados locais • ATLAS offline</span>
       </div>
     </div>
   );

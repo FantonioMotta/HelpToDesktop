@@ -1,12 +1,15 @@
 ﻿import { Shell } from "./components/shell/Shell";
 import { AppDataProvider } from "./store/AppDataContext";
 import { PreferencesProvider } from "./store/PreferencesContext";
+import { AtlasProvider } from "./features/atlas/AtlasContext";
 
 function App() {
   return (
     <PreferencesProvider>
       <AppDataProvider>
-        <Shell />
+        <AtlasProvider>
+          <Shell />
+        </AtlasProvider>
       </AppDataProvider>
     </PreferencesProvider>
   );

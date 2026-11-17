@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Keyboard, Trash2 } from "lucide-react";
 import {
   resumeGlobalShortcut,
+  resumeHoldShortcut,
   shortcutDisplay,
   suspendGlobalShortcut,
+  suspendHoldShortcut,
 } from "../../services/globalShortcut";
 
 const MODIFIER_CODES = new Set([
@@ -58,22 +60,26 @@ function keyFromCode(code: string): string | null {
 export function ShortcutRecorder({
   value,
   onChange,
+  kind = "global",
 }: {
   value: string;
   onChange: (shortcut: string) => void;
+  kind?: "global" | "atlas";
 }) {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const suspend = kind === "atlas" ? suspendHoldShortcut : suspendGlobalShortcut;
+  const resume = kind === "atlas" ? resumeHoldShortcut : resumeGlobalShortcut;
 
   // Release the currently registered shortcut while recording so the same
   // combination can be captured again.
   useEffect(() => {
     if (!recording) return;
-    void suspendGlobalShortcut();
+    void suspend();
     return () => {
-      void resumeGlobalShortcut();
+      void resume();
     };
-  }, [recording]);
+  }, [recording, suspend, resume]);
 
   useEffect(() => {
     if (!recording) return;

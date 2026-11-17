@@ -1,9 +1,10 @@
 use std::collections::VecDeque;
+use std::ffi::{c_char, c_void, CStr};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -429,7 +430,7 @@ fn run_audio_stream(shared: &Arc<AtlasShared>) -> Result<(), String> {
         .map_err(|e| format!("Não foi possível abrir o microfone: {e}"))?;
 
     let sample_format = supported.sample_format();
-    let input_rate = supported.sample_rate().0;
+    let input_rate = supported.sample_rate();
     let channels = supported.channels() as usize;
     let config = supported.config();
 
@@ -571,7 +572,34 @@ fn transcription_threads() -> i32 {
     available.saturating_sub(2).clamp(2, 8) as i32
 }
 
+/// whisper.cpp logs every decoding token to stderr by default. Keep only
+/// warnings/errors so a normal transcription doesn't flood the app log.
+fn configure_whisper_logs() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| unsafe {
+        unsafe extern "C" fn log_callback(level: i32, text: *const c_char, _user_data: *mut c_void) {
+            // ggml levels: 0 none, 1 debug, 2 info, 3 warn, 4 error, 5 cont.
+            // Only forward warnings/errors (and continuations of them) so the
+            // per-token INFO spam from whisper.cpp doesn't flood the app log.
+            if level < 3 || text.is_null() {
+                return;
+            }
+            if let Ok(line) = unsafe { CStr::from_ptr(text) }.to_str() {
+                let line = line.trim_end();
+                if !line.is_empty() {
+                    eprintln!("[atlas] {line}");
+                }
+            }
+        }
+        whisper_rs::set_log_callback(
+            whisper_rs::WhisperLogCallback::Some(log_callback),
+            std::ptr::null_mut(),
+        );
+    });
+}
+
 fn transcribe(model: &Path, audio: &[f32]) -> Result<String, String> {
+    configure_whisper_logs();
     if audio.len() < TARGET_RATE as usize / 3 {
         return Ok(String::new());
     }
@@ -661,8 +689,7 @@ fn capture_wake_command(shared: &Arc<AtlasShared>) -> Vec<f32> {
             };
             let length = buffer.len();
             let tail_start = length.saturating_sub(TARGET_RATE as usize / 5);
-            let tail: Vec<f32> = buffer.range(tail_start..).copied().collect();
-            (length, rms(&tail))
+            (length, rms(&buffer[tail_start..]))
         };
 
         if tail > 0.010 {
@@ -986,6 +1013,7 @@ pub fn atlas_download_models(state: tauri::State<'_, AtlasState>) -> Result<(), 
     }
 
     let app = shared.app.clone();
+    let error_shared = Arc::clone(&shared);
     std::thread::Builder::new()
         .name("atlas-download".to_string())
         .spawn(move || {
@@ -1003,7 +1031,7 @@ pub fn atlas_download_models(state: tauri::State<'_, AtlasState>) -> Result<(), 
             emit_progress(&app, "all", 1, 1, true, Some("Concluído".to_string()));
         })
         .map_err(|e| {
-            shared.downloading.store(false, Ordering::SeqCst);
+            error_shared.downloading.store(false, Ordering::SeqCst);
             format!("Não foi possível iniciar o download: {e}")
         })?;
 
@@ -1033,4 +1061,108 @@ pub fn atlas_delete_models(state: tauri::State<'_, AtlasState>) -> Result<(), St
 
     let _ = shared.app.emit("atlas:models-changed", models_status(shared));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wake_word_matches_standalone_tokens_only() {
+        for phrase in [
+            "atlas",
+            "ATLAS",
+            "átlas, criar tarefa",
+            "Oi Atlus, anotar ideia",
+            "blem, atles! agendar reunião",
+        ] {
+            assert!(has_wake_word(phrase), "should match: {phrase}");
+        }
+        for phrase in [
+            "comprar leite",
+            "atlasmente",
+            "a tl as",
+            "reunião com a equipe",
+        ] {
+            assert!(!has_wake_word(phrase), "should NOT match: {phrase}");
+        }
+    }
+
+    /// Manual verification of the full native STT path with a real Portuguese
+    /// sample and one of the downloaded models:
+    ///
+    /// ```powershell
+    /// $env:ATLAS_TEST_MODEL = "$env:TEMP\atlas-probe\ggml-base-q5_1.bin"
+    /// $env:ATLAS_TEST_WAV   = "$env:TEMP\opencode\atlas_test.wav"
+    /// cargo test --manifest-path src-tauri\Cargo.toml -- atlas::tests::transcribes_portuguese_wake_command --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "requires ATLAS_TEST_MODEL and ATLAS_TEST_WAV"]
+    fn transcribes_portuguese_wake_command() {
+        let model = std::env::var("ATLAS_TEST_MODEL").expect("ATLAS_TEST_MODEL is required");
+        let wav = std::env::var("ATLAS_TEST_WAV").expect("ATLAS_TEST_WAV is required");
+        let audio = read_wav_16k_mono(&wav).expect("failed to read the sample WAV");
+        assert!(audio.len() > TARGET_RATE as usize, "sample is too short");
+
+        let transcript = transcribe(Path::new(&model), &audio).expect("transcription failed");
+        println!("[atlas] transcript: {transcript}");
+        assert!(!transcript.is_empty(), "empty transcript");
+        assert!(
+            has_wake_word(&transcript),
+            "the wake word was not recognized in: {transcript}"
+        );
+    }
+
+    fn read_wav_16k_mono(path: &str) -> Result<Vec<f32>, String> {
+        let bytes = fs::read(path).map_err(|e| format!("failed to open WAV: {e}"))?;
+        if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+            return Err("not a RIFF/WAVE file".to_string());
+        }
+
+        let mut offset = 12usize;
+        let mut channels = 1u16;
+        let mut sample_rate = 0u32;
+        let mut bits = 0u16;
+        let mut pcm: Option<&[u8]> = None;
+
+        while offset + 8 <= bytes.len() {
+            let id = &bytes[offset..offset + 4];
+            let size = u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
+            let start = offset + 8;
+            let end = start.saturating_add(size).min(bytes.len());
+            let body = &bytes[start..end];
+            match id {
+                b"fmt " if body.len() >= 16 => {
+                    channels = u16::from_le_bytes(body[2..4].try_into().unwrap());
+                    sample_rate = u32::from_le_bytes(body[4..8].try_into().unwrap());
+                    bits = u16::from_le_bytes(body[14..16].try_into().unwrap());
+                }
+                b"data" => pcm = Some(body),
+                _ => {}
+            }
+            offset = end + (size % 2);
+        }
+
+        let pcm = pcm.ok_or_else(|| "no data chunk".to_string())?;
+        if sample_rate != TARGET_RATE || bits != 16 {
+            return Err(format!(
+                "expected 16 kHz / 16-bit WAV, got {sample_rate} Hz / {bits}-bit"
+            ));
+        }
+
+        let samples: Vec<i16> = pcm
+            .chunks_exact(2)
+            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+
+        let audio = match channels {
+            1 => samples.iter().map(|s| *s as f32 / 32_768.0).collect(),
+            2 => samples
+                .chunks_exact(2)
+                .map(|pair| (pair[0] as f32 + pair[1] as f32) / 2.0 / 32_768.0)
+                .collect(),
+            other => return Err(format!("unsupported channel count: {other}")),
+        };
+        Ok(audio)
+    }
 }

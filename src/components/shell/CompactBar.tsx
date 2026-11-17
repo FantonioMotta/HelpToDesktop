@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CheckSquare, GripVertical, StickyNote } from "lucide-react";
+import { Bell, CheckSquare, GripVertical, Mic, Square, StickyNote } from "lucide-react";
 import { useAppData } from "../../store/AppDataContext";
 import { usePreferences } from "../../store/PreferencesContext";
 import { useWindowDrag } from "../../hooks/useWindowDrag";
+import { useAtlas } from "../../features/atlas/AtlasContext";
+import type { AtlasPhase } from "../../features/atlas/AtlasContext";
 
 function formatTime(date: Date) {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -12,9 +14,19 @@ function formatDate(date: Date) {
   return date.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
 }
 
+const ATLAS_LABEL: Record<AtlasPhase, string> = {
+  idle: "",
+  listening: "Ouvindo…",
+  processing: "Transcrevendo…",
+  awake: "ATLAS ativada",
+  success: "Concluído",
+  error: "Atenção",
+};
+
 export function CompactBar({ onExpand }: { onExpand: () => void | Promise<void> }) {
   const { tasks, notes, reminders } = useAppData();
   const { prefs } = usePreferences();
+  const { phase, feedback, transcript, toggleListening, available } = useAtlas();
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -29,6 +41,13 @@ export function CompactBar({ onExpand }: { onExpand: () => void | Promise<void> 
   const blend = prefs.visualMode === "blend";
   // Blend mode keeps the bar glued to the top, so dragging is X-only there.
   const { dragging, handlers } = useWindowDrag(prefs.allowMove, blend);
+  const atlasActive = prefs.atlasEnabled && phase !== "idle";
+  const atlasText = feedback?.text || transcript || ATLAS_LABEL[phase];
+  const listening = phase === "listening";
+
+  const openAtlas = () => {
+    window.dispatchEvent(new CustomEvent("helpbar:open-module", { detail: "atlas" }));
+  };
 
   return (
     <div
@@ -52,20 +71,59 @@ export function CompactBar({ onExpand }: { onExpand: () => void | Promise<void> 
       <button
         type="button"
         onClick={() => void onExpand()}
-        className="flex-1 min-w-0 flex items-center justify-between gap-4 px-1 rounded-md hover:bg-white/5 active:scale-[0.99] transition"
+        className="flex items-center gap-2 px-1 rounded-md hover:bg-white/5 active:scale-[0.99] transition whitespace-nowrap"
         title="Abrir HelpBar (expandir)"
       >
-        <div className="flex items-center gap-2 text-sm font-medium tracking-tight">
-          <span>{time}</span>
-          <span className="text-zinc-400">•</span>
-          <span className="text-zinc-300 capitalize">{date}</span>
-        </div>
-        <div className="flex items-center gap-3 text-zinc-300">
+        <span className="text-sm font-medium tracking-tight">{time}</span>
+        <span className="text-zinc-400">•</span>
+        <span className="text-sm font-medium tracking-tight text-zinc-300 capitalize">{date}</span>
+      </button>
+
+      <div className="flex-1 min-w-0" />
+
+      {atlasActive ? (
+        <button
+          type="button"
+          onClick={openAtlas}
+          className={`min-w-0 max-w-[210px] inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border truncate ${
+            phase === "error"
+              ? "bg-amber-500/15 border-amber-500/40 text-amber-100"
+              : phase === "success"
+                ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-100"
+                : "bg-sky-500/15 border-sky-500/40 text-sky-100"
+          }`}
+          title={atlasText}
+        >
+          {listening || phase === "awake" ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0" />
+          ) : phase === "processing" ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse shrink-0" />
+          ) : null}
+          <span className="truncate">{atlasText}</span>
+        </button>
+      ) : (
+        <div className="flex items-center gap-3 text-zinc-300 shrink-0">
           <span className="inline-flex items-center gap-1 text-xs" title="Tarefas ativas"><CheckSquare size={14} />{activeTasks}</span>
           <span className="inline-flex items-center gap-1 text-xs" title="Notas"><StickyNote size={14} />{notes.length}</span>
           <span className="inline-flex items-center gap-1 text-xs" title="Lembretes pendentes"><Bell size={14} />{pendingReminders}</span>
         </div>
-      </button>
+      )}
+
+      {prefs.atlasEnabled && (
+        <button
+          type="button"
+          onClick={() => void toggleListening()}
+          disabled={!available}
+          className={`shrink-0 p-1.5 rounded-md transition-colors disabled:opacity-40 ${
+            listening
+              ? "bg-red-500/20 text-red-200 hover:bg-red-500/30"
+              : "text-zinc-400 hover:text-zinc-100 hover:bg-white/10"
+          }`}
+          title={listening ? "ATLAS: parar e transcrever" : "ATLAS: falar um comando"}
+        >
+          {listening ? <Square size={15} /> : <Mic size={16} />}
+        </button>
+      )}
     </div>
   );
 }

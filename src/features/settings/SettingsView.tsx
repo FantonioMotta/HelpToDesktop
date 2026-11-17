@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Database, Keyboard, LogOut, Monitor, Move, Palette, Power, Settings as SettingsIcon } from "lucide-react";
+import { Database, Download, Ear, Keyboard, Loader2, LogOut, Monitor, Move, Palette, Power, Settings as SettingsIcon, Sparkles, Volume2 } from "lucide-react";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { usePreferences } from "../../store/PreferencesContext";
 import { useAppData } from "../../store/AppDataContext";
 import { databaseLocationLabel } from "../../services/db";
 import { quitApp } from "../../services/appControl";
+import { useAtlas } from "../atlas/AtlasContext";
 import { ShortcutRecorder } from "./ShortcutRecorder";
 
 function Row({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
@@ -39,6 +40,13 @@ function ToggleButton({ active, onClick, disabled }: { active: boolean; onClick:
 export function SettingsView() {
   const { prefs, setPrefs, shortcutError } = usePreferences();
   const { storage } = useAppData();
+  const {
+    models,
+    downloading,
+    progress,
+    shortcutError: atlasShortcutError,
+    installModels,
+  } = useAtlas();
   const [autoStart, setAutoStart] = useState(false);
   const [autoStartBusy, setAutoStartBusy] = useState(false);
   const [autoStartError, setAutoStartError] = useState<string | null>(null);
@@ -161,6 +169,66 @@ export function SettingsView() {
           <p>• System Tray ativo: fechar a janela oculta para a bandeja; use o menu do tray para mostrar, abrir configurações ou sair.</p>
           <p>• O atalho funciona mesmo com a HelpBar oculta; pressione novamente para recolher.</p>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-zinc-800/70 p-4">
+        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2 flex items-center gap-2"><Sparkles size={13} /> ATLAS — assistente de voz local</div>
+        <Row title="Ativar ATLAS" description="Mostra o microfone na barra e permite ditar comandos para criar tarefas, notas, lembretes e compromissos.">
+          <ToggleButton active={prefs.atlasEnabled} onClick={() => setPrefs({ atlasEnabled: !prefs.atlasEnabled })} />
+        </Row>
+        {prefs.atlasEnabled && (
+          <>
+            <Row
+              title="Modelos de voz"
+              description="Reconhecimento local (whisper.cpp). Baixe uma vez para usar a voz; o áudio nunca é enviado para servidores."
+            >
+              <div className="flex flex-col items-end gap-1">
+                <div className="text-[11px] text-zinc-400">
+                  Base: <span className={models?.ready ? "text-emerald-300" : "text-zinc-500"}>{models?.ready ? "pronto" : "pendente"}</span>
+                  {" • "}Pequeno: <span className={models?.wakeReady ? "text-emerald-300" : "text-zinc-500"}>{models?.wakeReady ? "pronto" : "pendente"}</span>
+                </div>
+                {downloading && (
+                  <div className="w-[150px] h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div className="h-full bg-sky-500 transition-[width] duration-300" style={{ width: `${progress?.percent ?? 0}%` }} />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void installModels()}
+                  disabled={downloading || (models?.ready ?? false) && (models?.wakeReady ?? false)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border bg-sky-600/80 border-sky-500/50 text-white hover:bg-sky-600 disabled:opacity-50"
+                >
+                  {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                  {downloading ? `Baixando ${progress?.percent ?? 0}%` : "Baixar modelos"}
+                </button>
+              </div>
+            </Row>
+            <Row title="Ouvir a palavra “ATLAS”" description="Ativação contínua pelo microfone. Desligada por padrão por privacidade e consumo de CPU.">
+              <ToggleButton
+                active={prefs.atlasWakeWord}
+                disabled={!models?.wakeReady || !models?.ready}
+                onClick={() => setPrefs({ atlasWakeWord: !prefs.atlasWakeWord })}
+              />
+            </Row>
+            <Row title="Atalho de voz (pressione e segure)" description="Segure a combinação em qualquer aplicativo para gravar; solte para transcrever e executar.">
+              <ShortcutRecorder
+                kind="atlas"
+                value={prefs.atlasPttShortcut}
+                onChange={(v) => setPrefs({ atlasPttShortcut: v })}
+              />
+            </Row>
+            {atlasShortcutError && (
+              <div className="text-[11px] text-red-400 pt-1">Não foi possível registrar o atalho da ATLAS: {atlasShortcutError}</div>
+            )}
+            <Row title="Sons de retorno" description="Toca um sinal curto ao ativar, concluir ou falhar um comando de voz.">
+              <ToggleButton active={prefs.atlasSoundFeedback} onClick={() => setPrefs({ atlasSoundFeedback: !prefs.atlasSoundFeedback })} />
+            </Row>
+            <div className="text-[11px] text-zinc-500 space-y-1 pt-2">
+              <p className="flex items-start gap-1.5"><Ear size={12} className="mt-0.5 shrink-0" /> O microfone só fica ativo enquanto você segura o atalho ou enquanto a palavra de ativação estiver ligada.</p>
+              <p className="flex items-start gap-1.5"><Volume2 size={12} className="mt-0.5 shrink-0" /> Comandos de exclusão não são executados por voz; a ATLAS só cria itens e abre módulos.</p>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="rounded-xl border border-white/10 bg-zinc-800/70 p-4">

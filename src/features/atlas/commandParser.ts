@@ -170,7 +170,7 @@ function extractDate(folded: string, now: Date, ranges: Range[]): string | null 
   return null;
 }
 
-type ParsedTime = { time: string; endTime: string | null; ranges: Range[] };
+type ParsedTime = { time: string | null; endTime: string | null; ranges: Range[] };
 
 function validTime(hours: number, minutes: number): string | null {
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;

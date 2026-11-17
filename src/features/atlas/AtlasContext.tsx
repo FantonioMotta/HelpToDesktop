@@ -351,6 +351,7 @@ export function AtlasProvider({ children }: { children: ReactNode }) {
               setPhase("processing");
             } else if (state === "wake") {
               setPhase("awake");
+              void ensureWindowVisible();
               if (prefsRef.current.atlasSoundFeedback) playAtlasChime("wake");
             }
           }),

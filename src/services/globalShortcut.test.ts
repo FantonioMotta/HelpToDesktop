@@ -5,7 +5,12 @@ vi.mock("@tauri-apps/plugin-global-shortcut", () => ({
   unregister: vi.fn(async () => {}),
 }));
 
-import { shortcutDisplay } from "./globalShortcut";
+import { register } from "@tauri-apps/plugin-global-shortcut";
+import {
+  applyGlobalShortcut,
+  applyHoldShortcut,
+  shortcutDisplay,
+} from "./globalShortcut";
 
 describe("shortcutDisplay", () => {
   it("shows a placeholder when no shortcut is set", () => {
@@ -30,5 +35,30 @@ describe("shortcutDisplay", () => {
 
   it("trims spaces around each part", () => {
     expect(shortcutDisplay(" Control + Alt + Space ")).toBe("Ctrl+Alt+Espaço");
+  });
+});
+
+describe("applyHoldShortcut", () => {
+  it("refuses the same combination as the main HelpBar shortcut", async () => {
+    expect(await applyGlobalShortcut("Control+Alt+KeyG", () => {})).toBeNull();
+    const error = await applyHoldShortcut("Control+Alt+KeyG", { onPress: () => {} });
+    expect(error).toMatch(/não pode ser igual/i);
+  });
+
+  it("forwards Pressed and Released states to the handlers", async () => {
+    const onPress = vi.fn();
+    const onRelease = vi.fn();
+    expect(await applyHoldShortcut("Control+Alt+KeyQ", { onPress, onRelease })).toBeNull();
+
+    const call = vi
+      .mocked(register)
+      .mock.calls.find(([shortcut]) => shortcut === "Control+Alt+KeyQ");
+    expect(call).toBeDefined();
+    const handler = call?.[1];
+    handler?.({ state: "Pressed" } as any);
+    handler?.({ state: "Released" } as any);
+
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(onRelease).toHaveBeenCalledTimes(1);
   });
 });

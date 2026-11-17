@@ -7,3 +7,11 @@
 [env]
 CMAKE_C_FLAGS_RELEASE = "/O2 /Ob2 /DNDEBUG"
 CMAKE_CXX_FLAGS_RELEASE = "/O2 /Ob2 /DNDEBUG"
+
+# Toolchain do whisper.cpp. Ficam aqui (e não só no ambiente do shell) porque o
+# Cargo injeta estas variáveis no build script mesmo quando o terminal/IDE foi
+# aberto antes de elas serem definidas no registro do Windows.
+# `force = false` respeita um valor já definido pelo usuário, se houver.
+# Ajuste os caminhos abaixo ao trocar de máquina.
+LIBCLANG_PATH = { value = "C:/Users/ADM/AppData/Roaming/Python/Python313/site-packages/clang/native", force = false }
+CMAKE = { value = "C:/Users/ADM/Tools/cmake-3.31.6-windows-x86_64/bin/cmake.exe", force = false }

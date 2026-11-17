@@ -6,6 +6,7 @@ import { useShellMode } from "../../hooks/useShellMode";
 import { useReminderScheduler } from "../../hooks/useReminderScheduler";
 import { useWindowPositioning } from "../../hooks/useWindowPositioning";
 import { useGlobalShortcut } from "../../hooks/useGlobalShortcut";
+import type { ShellModule } from "../../types/shell";
 
 export function Shell() {
   useReminderScheduler();
@@ -27,14 +28,21 @@ export function Shell() {
       setActiveModule("settings");
       if (!isOpen) void expand();
     };
+    const openModule = (event: Event) => {
+      const module = (event as CustomEvent<ShellModule>).detail;
+      if (module) setActiveModule(module);
+      if (!isOpen) void expand();
+    };
 
     window.addEventListener("helpbar:expand", expandNow);
     window.addEventListener("helpbar:toggle", toggleNow);
     window.addEventListener("helpbar:open-settings", openSettings);
+    window.addEventListener("helpbar:open-module", openModule);
     return () => {
       window.removeEventListener("helpbar:expand", expandNow);
       window.removeEventListener("helpbar:toggle", toggleNow);
       window.removeEventListener("helpbar:open-settings", openSettings);
+      window.removeEventListener("helpbar:open-module", openModule);
     };
   }, [isOpen, expand, collapse, setActiveModule]);
 
